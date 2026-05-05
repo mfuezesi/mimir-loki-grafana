@@ -68,6 +68,38 @@ services:
       # 3. Diese Label-Gruppe kopieren, "team-gamma" einsetzen
       # 4. docker compose up -d mimir
 
+  # ── Grafana Alloy (optional, Profil: alloy) ──────────────────────────────────
+  # Startet nur mit: docker compose --profile alloy up -d
+  # Oder dauerhaft aktivieren: COMPOSE_PROFILES=alloy in .env setzen
+  #
+  # Verbindet sich direkt mit Mimir im internen Netzwerk (kein Traefik/BasicAuth).
+  # Host-Metriken des Docker-Hosts werden via Bind-Mounts gelesen.
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    restart: unless-stopped
+    profiles:
+      - alloy
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+    environment:
+      - ALLOY_MIMIR_TENANT=${ALLOY_MIMIR_TENANT}
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Bind-Mounts für Host-Metriken (prometheus.exporter.unix)
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+    # Zugriff auf Host-PID-Namespace für korrekte Prozess-Metriken
+    pid: host
+    networks:
+      - monitoring
+    depends_on:
+      mimir:
+        condition: service_healthy
+
   # ── Grafana Loki ─────────────────────────────────────────────────────────────
   loki:
     image: grafana/loki:latest

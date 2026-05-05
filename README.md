@@ -44,8 +44,10 @@ Internet
 │       │   └── datasources.yaml  # Mimir- und Loki-Datasources
 │       └── dashboards/
 │           └── dashboards.yaml   # Dashboard-Provider
+├── alloy/
+│   └── config.alloy              # Alloy als Compose-Service (gleicher Host, intern)
 └── alloy-client/
-    └── config.alloy              # Alloy-Config für Client-Maschinen
+    └── config.alloy              # Alloy für externe Client-Maschinen (via Traefik)
 ```
 
 ## Voraussetzungen
@@ -205,11 +207,43 @@ docker compose restart mimir
 
 Danach greift Mimir sofort auf `runtime.yaml` und lädt Änderungen darin ohne Neustart.
 
-## Clients konfigurieren (Alloy)
+## Alloy: Metriken senden
 
-Die Datei `alloy-client/config.alloy` ist eine fertige Konfiguration für Client-Maschinen.
+Es gibt zwei Varianten, je nachdem ob Alloy auf dem gleichen Host wie der Stack oder auf einer entfernten Maschine läuft.
 
-### Docker
+| | In-Compose (`alloy/`) | Externer Client (`alloy-client/`) |
+|---|---|---|
+| Verbindung | Direkt intern `http://mimir:8080` | Via Traefik HTTPS |
+| Auth | Kein BasicAuth — `X-Scope-OrgID` direkt | BasicAuth → Traefik setzt Header |
+| Config | `alloy/config.alloy` | `alloy-client/config.alloy` |
+
+### Option 1: Alloy als Compose-Service (gleicher Host)
+
+Der optionale `alloy`-Service läuft im selben Stack und liest Host-Metriken direkt über Bind-Mounts (`/proc`, `/sys`, `/`). Er verbindet sich intern mit Mimir — kein Traefik, kein BasicAuth.
+
+**Aktivieren:**
+
+```bash
+# Einmalig starten:
+docker compose --profile alloy up -d alloy
+
+# Oder dauerhaft in .env aktivieren:
+echo "COMPOSE_PROFILES=alloy" >> .env
+docker compose up -d
+```
+
+**Tenant konfigurieren** (`.env`):
+```dotenv
+ALLOY_MIMIR_TENANT=host-monitoring
+```
+
+Dieser Tenant muss in Grafana als eigene Datasource eingetragen sein (siehe [Neuen Tenant hinzufügen](#neuen-tenant-hinzufügen)).
+
+### Option 2: Alloy auf entfernten Maschinen (Clients)
+
+Die Datei `alloy-client/config.alloy` ist für externe Maschinen gedacht. Der Client authentifiziert sich per BasicAuth bei Traefik — Traefik setzt `X-Scope-OrgID` automatisch.
+
+**Docker:**
 
 ```bash
 docker run --rm --net=host \
@@ -220,7 +254,7 @@ docker run --rm --net=host \
   grafana/alloy:latest run /etc/alloy/config.alloy
 ```
 
-### Nativ (systemd)
+**Nativ (systemd):**
 
 ```bash
 # /etc/alloy/config.alloy kopieren
@@ -230,11 +264,11 @@ MIMIR_USER=myuser
 MIMIR_PASSWORD=mypassword
 ```
 
-Der Client setzt **keinen** `X-Scope-OrgID`-Header — das übernimmt Traefik nach der Authentifizierung. Der Tenant ergibt sich aus dem URL-Pfad `/t/{tenant-id}/`.
+Der Tenant ergibt sich aus dem URL-Pfad `/t/{tenant-id}/` — kein `X-Scope-OrgID` im Client nötig.
 
-### Optionale Erweiterungen in `config.alloy`
+### Optionale Erweiterungen in beiden Configs
 
-Die Datei enthält auskommentierte Blöcke für:
+Beide Configs enthalten auskommentierte Blöcke für:
 - **Alloy-Selbst-Monitoring** — Alloys eigene Metriken an Mimir senden
 - **Loki-Log-Shipping** — systemd-Journal-Logs an Loki weiterleiten
 
