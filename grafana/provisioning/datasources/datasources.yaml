@@ -1,0 +1,92 @@
+# Grafana Datasource Provisioning
+# Dokumentation: https://grafana.com/docs/grafana/latest/administration/provisioning/#datasources
+#
+# Grafana interpoliert ${ENV_VAR} in secureJsonData aus Umgebungsvariablen.
+# Die Vars MIMIR_GRAFANA_TENANT und MIMIR_FEDERATION_TENANTS werden im
+# docker-compose.yml an den Grafana-Container weitergereicht.
+
+apiVersion: 1
+
+datasources:
+  # ── Mimir: Einzelner Tenant (team-alpha) ────────────────────────────────────
+  # Grafana verbindet sich intern direkt mit Mimir (kein Traefik-Roundtrip).
+  # X-Scope-OrgID wird hier direkt gesetzt — kein BasicAuth nötig.
+  - name: "Mimir - team-alpha"
+    type: prometheus
+    uid: mimir-team-alpha
+    access: proxy
+    url: http://mimir:8080/prometheus
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      prometheusType: Mimir
+      prometheusVersion: "2.9.1"
+      httpHeaderName1: "X-Scope-OrgID"
+    secureJsonData:
+      httpHeaderValue1: "team-alpha"
+
+  # ── Mimir: Einzelner Tenant (team-beta) ─────────────────────────────────────
+  - name: "Mimir - team-beta"
+    type: prometheus
+    uid: mimir-team-beta
+    access: proxy
+    url: http://mimir:8080/prometheus
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: POST
+      prometheusType: Mimir
+      prometheusVersion: "2.9.1"
+      httpHeaderName1: "X-Scope-OrgID"
+    secureJsonData:
+      httpHeaderValue1: "team-beta"
+
+  # ── Mimir: Grafana-interner Tenant ──────────────────────────────────────────
+  # Für Dashboards die Grafana selbst betreffen (z.B. Grafana-Metriken).
+  - name: "Mimir - Internal"
+    type: prometheus
+    uid: mimir-internal
+    access: proxy
+    url: http://mimir:8080/prometheus
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: POST
+      prometheusType: Mimir
+      prometheusVersion: "2.9.1"
+      httpHeaderName1: "X-Scope-OrgID"
+    secureJsonData:
+      httpHeaderValue1: "${MIMIR_GRAFANA_TENANT}"
+
+  # ── Mimir: Cross-Tenant (Federation) ────────────────────────────────────────
+  # Fragt mehrere Tenants gleichzeitig ab. Erfordert tenant_federation.enabled
+  # in mimir.yaml. Tenants werden per | getrennt (aus MIMIR_FEDERATION_TENANTS).
+  # Beim Hinzufügen eines neuen Tenants: .env aktualisieren + grafana restart.
+  - name: "Mimir - All Tenants"
+    type: prometheus
+    uid: mimir-all
+    access: proxy
+    url: http://mimir:8080/prometheus
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: POST
+      prometheusType: Mimir
+      prometheusVersion: "2.9.1"
+      httpHeaderName1: "X-Scope-OrgID"
+    secureJsonData:
+      # Beispielwert: "team-alpha|team-beta" — aus .env via docker-compose
+      httpHeaderValue1: "${MIMIR_FEDERATION_TENANTS}"
+
+  # ── Loki ────────────────────────────────────────────────────────────────────
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields: []

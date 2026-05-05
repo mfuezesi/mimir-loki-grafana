@@ -1,0 +1,112 @@
+// ── Alloy Client Configuration ───────────────────────────────────────────────
+// Standalone-Config für CLIENT-Maschinen, die Metriken an den zentralen
+// Mimir-Stack senden. Diese Datei gehört NICHT zum Server-Docker-Compose.
+//
+// Starten (Docker):
+//   docker run --rm --net=host \
+//     -v ./config.alloy:/etc/alloy/config.alloy \
+//     -e MIMIR_URL=https://mimir.example.com/t/team-alpha/api/v1/push \
+//     -e MIMIR_USER=myuser \
+//     -e MIMIR_PASSWORD=mypassword \
+//     grafana/alloy:latest run /etc/alloy/config.alloy
+//
+// Starten (nativ, systemd):
+//   MIMIR_URL=... MIMIR_USER=... MIMIR_PASSWORD=... alloy run /etc/alloy/config.alloy
+//
+// Erforderliche Umgebungsvariablen:
+//   MIMIR_URL      URL inkl. Tenant-Pfad: https://mimir.example.com/t/<tenant-id>/api/v1/push
+//   MIMIR_USER     BasicAuth Benutzername
+//   MIMIR_PASSWORD BasicAuth Passwort
+//
+// Hinweis: X-Scope-OrgID wird NICHT gesetzt — Traefik injiziert diesen Header
+// nach erfolgreicher BasicAuth-Authentifizierung automatisch.
+// ────────────────────────────────────────────────────────────────────────────────
+
+// ── Host-Metriken (ersetzt node_exporter) ─────────────────────────────────────
+prometheus.exporter.unix "host" {
+  // Alle Collector standardmäßig aktiv.
+  // Einschränken mit: set_collectors = ["cpu", "meminfo", "diskstats", "filesystem", "netdev"]
+}
+
+// ── Scrape: Host-Metriken ──────────────────────────────────────────────────────
+prometheus.scrape "host_metrics" {
+  targets    = prometheus.exporter.unix.host.targets
+  forward_to = [prometheus.relabel.add_labels.receiver]
+
+  scrape_interval = "60s"
+  scrape_timeout  = "10s"
+}
+
+// ── Labels hinzufügen ─────────────────────────────────────────────────────────
+prometheus.relabel "add_labels" {
+  forward_to = [prometheus.remote_write.mimir.receiver]
+
+  rule {
+    target_label = "job"
+    replacement  = "node"
+  }
+
+  // Optional: 'instance' auf einen lesbaren Hostnamen setzen statt der Scrape-Adresse.
+  // rule {
+  //   target_label = "instance"
+  //   replacement  = "mein-server-01"
+  // }
+}
+
+// ── Remote Write an Mimir (via Traefik BasicAuth) ─────────────────────────────
+prometheus.remote_write "mimir" {
+  endpoint {
+    // URL enthält den Tenant-Pfad — Traefik leitet weiter und setzt X-Scope-OrgID.
+    // Beispiel: https://mimir.example.com/t/team-alpha/api/v1/push
+    url = env("MIMIR_URL")
+
+    basic_auth {
+      username = env("MIMIR_USER")
+      password = env("MIMIR_PASSWORD")
+    }
+
+    // X-Scope-OrgID wird von Traefik gesetzt — hier NICHT angeben.
+
+    tls_config {
+      insecure_skip_verify = false
+    }
+
+    queue_config {
+      capacity             = 10000
+      max_shards           = 4
+      min_shards           = 1
+      max_samples_per_send = 2000
+      batch_send_deadline  = "5s"
+      min_backoff          = "30ms"
+      max_backoff          = "5s"
+    }
+  }
+}
+
+// ── Optional: Alloy-Selbst-Monitoring ─────────────────────────────────────────
+// Alloys eigene Metriken an Mimir senden.
+//
+// prometheus.scrape "alloy_self" {
+//   targets = [{ __address__ = "localhost:12345" }]
+//   forward_to = [prometheus.remote_write.mimir.receiver]
+//   job_name   = "alloy"
+//   scrape_interval = "60s"
+// }
+
+// ── Optional: Loki Log-Shipping ───────────────────────────────────────────────
+// System-Journal-Logs an Loki senden.
+// Zusätzliche Umgebungsvariable: LOKI_URL (z.B. https://loki.example.com/loki/api/v1/push)
+//
+// loki.source.journal "system_logs" {
+//   forward_to = [loki.write.loki_remote.receiver]
+//   labels = {
+//     job  = "systemd-journal",
+//     host = env("HOSTNAME"),
+//   }
+// }
+//
+// loki.write "loki_remote" {
+//   endpoint {
+//     url = env("LOKI_URL")
+//   }
+// }

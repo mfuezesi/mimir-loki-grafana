@@ -1,0 +1,139 @@
+networks:
+  monitoring:
+    name: monitoring
+    driver: bridge
+  proxy:
+    external: true
+    name: proxy
+
+volumes:
+  mimir-data:
+  loki-data:
+  grafana-data:
+
+services:
+
+  # ── Grafana Mimir ────────────────────────────────────────────────────────────
+  mimir:
+    image: grafana/mimir:latest
+    container_name: mimir
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/mimir/mimir.yaml
+    volumes:
+      - ./mimir/config/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir-data:/data/mimir
+    networks:
+      - monitoring
+      - proxy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      # Shared backend — alle Tenant-Router verweisen auf diesen Service
+      - "traefik.http.services.mimir.loadbalancer.server.port=8080"
+
+      # ── Tenant: team-alpha ──────────────────────────────────────────────────
+      # Router
+      - "traefik.http.routers.mimir-team-alpha.rule=Host(`${MIMIR_DOMAIN}`) && PathPrefix(`/t/team-alpha`)"
+      - "traefik.http.routers.mimir-team-alpha.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.mimir-team-alpha.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
+      - "traefik.http.routers.mimir-team-alpha.service=mimir"
+      - "traefik.http.routers.mimir-team-alpha.middlewares=mimir-auth-team-alpha,mimir-strip-team-alpha,mimir-tenant-team-alpha"
+      # Middleware 1: BasicAuth
+      - "traefik.http.middlewares.mimir-auth-team-alpha.basicauth.users=${MIMIR_BASICAUTH_TEAM_ALPHA}"
+      # Middleware 2: Strip Path Prefix
+      - "traefik.http.middlewares.mimir-strip-team-alpha.stripprefix.prefixes=/t/team-alpha"
+      # Middleware 3: Tenant-Header setzen (überschreibt jeden Client-Wert)
+      - "traefik.http.middlewares.mimir-tenant-team-alpha.headers.customrequestheaders.X-Scope-OrgID=team-alpha"
+
+      # ── Tenant: team-beta ───────────────────────────────────────────────────
+      - "traefik.http.routers.mimir-team-beta.rule=Host(`${MIMIR_DOMAIN}`) && PathPrefix(`/t/team-beta`)"
+      - "traefik.http.routers.mimir-team-beta.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.mimir-team-beta.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
+      - "traefik.http.routers.mimir-team-beta.service=mimir"
+      - "traefik.http.routers.mimir-team-beta.middlewares=mimir-auth-team-beta,mimir-strip-team-beta,mimir-tenant-team-beta"
+      - "traefik.http.middlewares.mimir-auth-team-beta.basicauth.users=${MIMIR_BASICAUTH_TEAM_BETA}"
+      - "traefik.http.middlewares.mimir-strip-team-beta.stripprefix.prefixes=/t/team-beta"
+      - "traefik.http.middlewares.mimir-tenant-team-beta.headers.customrequestheaders.X-Scope-OrgID=team-beta"
+
+      # ── Neuen Tenant hinzufügen ─────────────────────────────────────────────
+      # 1. Hash generieren: echo $(htpasswd -nb user pw) | sed -e 's/\$/\$\$/g'
+      # 2. In .env eintragen: MIMIR_BASICAUTH_TEAM_GAMMA=user:$$hash
+      # 3. Diese Label-Gruppe kopieren, "team-gamma" einsetzen
+      # 4. docker compose up -d mimir
+
+  # ── Grafana Loki ─────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./loki/config/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/data/loki
+    networks:
+      - monitoring
+      - proxy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.loki.rule=Host(`${LOKI_DOMAIN}`)"
+      - "traefik.http.routers.loki.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.loki.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
+      - "traefik.http.routers.loki.service=loki"
+      - "traefik.http.services.loki.loadbalancer.server.port=3100"
+
+  # ── Grafana ───────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      - GF_SECURITY_SECRET_KEY=${GF_SECURITY_SECRET_KEY}
+      - GF_SERVER_ROOT_URL=https://${GRAFANA_DOMAIN}
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      # Weitergabe an Grafana-Provisioning (datasources.yaml liest ${MIMIR_GRAFANA_TENANT})
+      - MIMIR_GRAFANA_TENANT=${MIMIR_GRAFANA_TENANT}
+      - MIMIR_FEDERATION_TENANTS=${MIMIR_FEDERATION_TENANTS}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - monitoring
+      - proxy
+    depends_on:
+      mimir:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.grafana.rule=Host(`${GRAFANA_DOMAIN}`)"
+      - "traefik.http.routers.grafana.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.grafana.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
+      - "traefik.http.routers.grafana.service=grafana"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"

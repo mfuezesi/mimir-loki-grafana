@@ -1,0 +1,118 @@
+# Mimir monolithisch — alle Komponenten in einem Prozess
+# Dokumentation: https://grafana.com/docs/mimir/latest/configure/configuration-parameters/
+
+target: all
+
+# ── Multi-Tenancy ──────────────────────────────────────────────────────────────
+# Jede Anfrage muss X-Scope-OrgID tragen. Traefik setzt diesen Header.
+multitenancy_enabled: true
+
+# ── Tenant Federation ──────────────────────────────────────────────────────────
+# Ermöglicht Queries über mehrere Tenants gleichzeitig:
+# X-Scope-OrgID: tenant-a|tenant-b|tenant-c
+tenant_federation:
+  enabled: true
+
+# ── Server ────────────────────────────────────────────────────────────────────
+server:
+  http_listen_port: 8080
+  grpc_listen_port: 9095
+  log_level: info
+  log_format: json
+
+# ── Common Storage ────────────────────────────────────────────────────────────
+common:
+  storage:
+    backend: filesystem
+    filesystem:
+      dir: /data/mimir/storage
+
+# ── Blocks Storage (TSDB-Blöcke der Ingesters) ───────────────────────────────
+blocks_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/mimir/blocks
+  tsdb:
+    dir: /data/mimir/tsdb
+    wal_compression_enabled: true
+
+# ── Compactor ─────────────────────────────────────────────────────────────────
+compactor:
+  data_dir: /data/mimir/compactor
+  sharding_ring:
+    kvstore:
+      store: memberlist
+
+# ── Ingester ──────────────────────────────────────────────────────────────────
+ingester:
+  ring:
+    # Single-Instance: Replication Factor muss 1 sein
+    replication_factor: 1
+    kvstore:
+      store: memberlist
+
+# ── Store Gateway ─────────────────────────────────────────────────────────────
+store_gateway:
+  sharding_ring:
+    replication_factor: 1
+    kvstore:
+      store: memberlist
+
+# ── Distributor ───────────────────────────────────────────────────────────────
+distributor:
+  ring:
+    kvstore:
+      store: memberlist
+
+# ── Ruler ─────────────────────────────────────────────────────────────────────
+ruler:
+  rule_path: /data/mimir/rules
+
+ruler_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/mimir/ruler
+
+# ── Alertmanager ──────────────────────────────────────────────────────────────
+alertmanager:
+  data_dir: /data/mimir/alertmanager
+  sharding_ring:
+    kvstore:
+      store: memberlist
+
+alertmanager_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/mimir/alertmanager-storage
+
+# ── Memberlist (internes Cluster-Koordination) ────────────────────────────────
+# Auch im Single-Instance-Betrieb nutzt Mimir Memberlist für Ring-Koordination.
+memberlist:
+  join_members:
+    - mimir:7946
+  bind_port: 7946
+
+# ── Query Frontend ────────────────────────────────────────────────────────────
+frontend:
+  align_queries_with_step: true
+
+# ── Limits (Tenant-Defaults) ──────────────────────────────────────────────────
+limits:
+  compactor_blocks_retention_period: 90d
+  # 0 = unbegrenzt; bei Bedarf per-tenant überschreiben (runtime.yaml)
+  max_global_series_per_user: 0
+  ingestion_rate: 0
+
+# ── Runtime Config (Per-Tenant-Overrides, Hot-Reload alle 10s) ───────────────
+# Datei anlegen unter mimir/config/runtime.yaml für Tenant-spezifische Limits.
+# Beispiel runtime.yaml:
+#   overrides:
+#     team-alpha:
+#       ingestion_rate: 50000
+#       compactor_blocks_retention_period: 365d
+#     team-beta:
+#       compactor_blocks_retention_period: 7d
+#
+# runtime_config:
+#   file: /etc/mimir/runtime.yaml
+#   period: 10s

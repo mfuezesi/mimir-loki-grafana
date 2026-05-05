@@ -1,0 +1,75 @@
+# Loki monolithisch — alle Komponenten in einem Prozess
+# Dokumentation: https://grafana.com/docs/loki/latest/configure/
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: info
+  log_format: json
+
+# ── Common ────────────────────────────────────────────────────────────────────
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /data/loki
+  storage:
+    filesystem:
+      chunks_directory: /data/loki/chunks
+      rules_directory: /data/loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# ── Schema Config ─────────────────────────────────────────────────────────────
+# Schema v13 mit TSDB ist die aktuelle Empfehlung.
+# Das "from"-Datum darf nach dem ersten Schreiben nicht mehr geändert werden.
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
+
+# ── Storage Config ────────────────────────────────────────────────────────────
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /data/loki/tsdb-index
+    cache_location: /data/loki/tsdb-cache
+  filesystem:
+    directory: /data/loki/chunks
+
+# ── Limits ────────────────────────────────────────────────────────────────────
+limits_config:
+  retention_period: 31d
+  ingestion_burst_size_mb: 16
+  ingestion_rate_mb: 8
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+
+# ── Compactor (Retention-Durchsetzung) ───────────────────────────────────────
+compactor:
+  working_directory: /data/loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+  delete_request_store: filesystem
+
+# ── Query Range ───────────────────────────────────────────────────────────────
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+# ── Ruler ─────────────────────────────────────────────────────────────────────
+ruler:
+  alertmanager_url: http://localhost:9093
