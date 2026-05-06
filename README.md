@@ -46,7 +46,9 @@ Internet
 │           └── dashboards.yaml   # Dashboard-Provider
 └── alloy/
     ├── compose.alloy             # Alloy als Compose-Service (gleicher Host, intern)
-    └── client.alloy              # Alloy für externe Client-Maschinen (via Traefik)
+    ├── client.alloy              # Alloy-Config für externe Client-Maschinen
+    ├── docker-compose.yml        # Compose-File für externe Clients
+    └── .env.example              # Env-Template für externe Clients
 ```
 
 ## Voraussetzungen
@@ -242,22 +244,25 @@ Dieser Tenant muss in Grafana als eigene Datasource eingetragen sein (siehe [Neu
 
 Die Datei `alloy/client.alloy` ist für externe Maschinen gedacht. Der Client authentifiziert sich per BasicAuth bei Traefik — Traefik setzt `X-Scope-OrgID` automatisch.
 
-**Docker:**
+**Docker Compose** (`alloy/docker-compose.yml` auf die Client-Maschine kopieren):
 
 ```bash
-docker run --rm --net=host \
-  -v ./alloy/client.alloy:/etc/alloy/config.alloy \
-  -e MIMIR_URL=https://mimir.example.com/t/team-alpha/api/v1/push \
-  -e MIMIR_USER=myuser \
-  -e MIMIR_PASSWORD=mypassword \
-  grafana/alloy:latest run /etc/alloy/config.alloy
+# alloy/ Verzeichnis auf den Client-Rechner kopieren
+scp -r alloy/ user@client-host:~/alloy/
+
+# Auf dem Client-Rechner:
+cd ~/alloy
+cp .env.example .env
+# .env befüllen: MIMIR_URL, MIMIR_USER, MIMIR_PASSWORD
+docker compose up -d
 ```
 
 **Nativ (systemd):**
 
 ```bash
-# /etc/alloy/config.alloy kopieren
-# /etc/default/alloy oder systemd unit Environment= setzen:
+# client.alloy nach /etc/alloy/config.alloy kopieren
+# procfs_path/sysfs_path/rootfs_path-Zeilen in der Config entfernen
+# Umgebungsvariablen setzen, z.B. in /etc/default/alloy:
 MIMIR_URL=https://mimir.example.com/t/team-alpha/api/v1/push
 MIMIR_USER=myuser
 MIMIR_PASSWORD=mypassword

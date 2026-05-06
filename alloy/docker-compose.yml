@@ -1,0 +1,22 @@
+services:
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    restart: unless-stopped
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+    environment:
+      - MIMIR_URL=${MIMIR_URL}
+      - MIMIR_USER=${MIMIR_USER}
+      - MIMIR_PASSWORD=${MIMIR_PASSWORD}
+    volumes:
+      - ./client.alloy:/etc/alloy/config.alloy:ro
+      # Bind-Mounts für Host-Metriken
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+    # Host-PID-Namespace für korrekte Prozess-Metriken
+    pid: host
+    network_mode: host
