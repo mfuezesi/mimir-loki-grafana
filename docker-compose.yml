@@ -87,7 +87,7 @@ services:
     environment:
       - ALLOY_MIMIR_TENANT=${ALLOY_MIMIR_TENANT}
     volumes:
-      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ./alloy/compose.alloy:/etc/alloy/config.alloy:ro
       # Bind-Mounts für Host-Metriken (prometheus.exporter.unix)
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro

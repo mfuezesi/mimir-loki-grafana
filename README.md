@@ -44,10 +44,9 @@ Internet
 │       │   └── datasources.yaml  # Mimir- und Loki-Datasources
 │       └── dashboards/
 │           └── dashboards.yaml   # Dashboard-Provider
-├── alloy/
-│   └── config.alloy              # Alloy als Compose-Service (gleicher Host, intern)
-└── alloy-client/
-    └── config.alloy              # Alloy für externe Client-Maschinen (via Traefik)
+└── alloy/
+    ├── compose.alloy             # Alloy als Compose-Service (gleicher Host, intern)
+    └── client.alloy              # Alloy für externe Client-Maschinen (via Traefik)
 ```
 
 ## Voraussetzungen
@@ -215,7 +214,7 @@ Es gibt zwei Varianten, je nachdem ob Alloy auf dem gleichen Host wie der Stack 
 |---|---|---|
 | Verbindung | Direkt intern `http://mimir:8080` | Via Traefik HTTPS |
 | Auth | Kein BasicAuth — `X-Scope-OrgID` direkt | BasicAuth → Traefik setzt Header |
-| Config | `alloy/config.alloy` | `alloy-client/config.alloy` |
+| Config | `alloy/compose.alloy` | `alloy/client.alloy` |
 
 ### Option 1: Alloy als Compose-Service (gleicher Host)
 
@@ -241,13 +240,13 @@ Dieser Tenant muss in Grafana als eigene Datasource eingetragen sein (siehe [Neu
 
 ### Option 2: Alloy auf entfernten Maschinen (Clients)
 
-Die Datei `alloy-client/config.alloy` ist für externe Maschinen gedacht. Der Client authentifiziert sich per BasicAuth bei Traefik — Traefik setzt `X-Scope-OrgID` automatisch.
+Die Datei `alloy/client.alloy` ist für externe Maschinen gedacht. Der Client authentifiziert sich per BasicAuth bei Traefik — Traefik setzt `X-Scope-OrgID` automatisch.
 
 **Docker:**
 
 ```bash
 docker run --rm --net=host \
-  -v ./alloy-client/config.alloy:/etc/alloy/config.alloy \
+  -v ./alloy/client.alloy:/etc/alloy/config.alloy \
   -e MIMIR_URL=https://mimir.example.com/t/team-alpha/api/v1/push \
   -e MIMIR_USER=myuser \
   -e MIMIR_PASSWORD=mypassword \
@@ -270,7 +269,7 @@ Der Tenant ergibt sich aus dem URL-Pfad `/t/{tenant-id}/` — kein `X-Scope-OrgI
 
 Beide Configs enthalten auskommentierte Blöcke für:
 - **Alloy-Selbst-Monitoring** — Alloys eigene Metriken an Mimir senden
-- **Loki-Log-Shipping** — systemd-Journal-Logs an Loki weiterleiten
+- **Loki-Log-Shipping** — systemd-Journal-Logs an Loki weiterleiten (`client.alloy`)
 
 ## Cross-Tenant-Queries
 
