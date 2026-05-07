@@ -134,6 +134,7 @@ services:
       - MIMIR_FEDERATION_TENANTS=${MIMIR_FEDERATION_TENANTS}
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     networks:
       - monitoring
