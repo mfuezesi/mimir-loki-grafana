@@ -26,12 +26,6 @@ services:
     networks:
       - monitoring
       - proxy
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/ready"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
@@ -97,14 +91,14 @@ services:
     networks:
       - monitoring
     depends_on:
-      mimir:
-        condition: service_healthy
+      - mimir
 
   # ── Grafana Loki ─────────────────────────────────────────────────────────────
   loki:
     image: grafana/loki:latest
     container_name: loki
     restart: unless-stopped
+    user: "0"
     command:
       - -config.file=/etc/loki/loki.yaml
     volumes:
@@ -113,12 +107,6 @@ services:
     networks:
       - monitoring
       - proxy
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
@@ -151,16 +139,8 @@ services:
       - monitoring
       - proxy
     depends_on:
-      mimir:
-        condition: service_healthy
-      loki:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      - mimir
+      - loki
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
