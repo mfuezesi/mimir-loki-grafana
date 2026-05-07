@@ -92,10 +92,6 @@ memberlist:
     - mimir:7946
   bind_port: 7946
 
-# ── Query Frontend ────────────────────────────────────────────────────────────
-frontend:
-  align_queries_with_step: true
-
 # ── Limits (Tenant-Defaults) ──────────────────────────────────────────────────
 limits:
   compactor_blocks_retention_period: 90d

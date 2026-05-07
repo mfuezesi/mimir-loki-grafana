@@ -10,13 +10,15 @@ server:
   log_format: json
 
 # ── Common ────────────────────────────────────────────────────────────────────
+# path_prefix /loki: im offiziellen Loki-Image bereits als UID 10001 angelegt.
+# Alle Unterpfade werden relativ dazu aufgelöst.
 common:
   instance_addr: 127.0.0.1
-  path_prefix: /data/loki
+  path_prefix: /loki
   storage:
     filesystem:
-      chunks_directory: /data/loki/chunks
-      rules_directory: /data/loki/rules
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
   replication_factor: 1
   ring:
     kvstore:
@@ -38,10 +40,10 @@ schema_config:
 # ── Storage Config ────────────────────────────────────────────────────────────
 storage_config:
   tsdb_shipper:
-    active_index_directory: /data/loki/tsdb-index
-    cache_location: /data/loki/tsdb-cache
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
   filesystem:
-    directory: /data/loki/chunks
+    directory: /loki/chunks
 
 # ── Limits ────────────────────────────────────────────────────────────────────
 limits_config:
@@ -53,7 +55,7 @@ limits_config:
 
 # ── Compactor (Retention-Durchsetzung) ───────────────────────────────────────
 compactor:
-  working_directory: /data/loki/compactor
+  working_directory: /loki/compactor
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h

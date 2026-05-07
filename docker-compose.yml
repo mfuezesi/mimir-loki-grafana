@@ -109,7 +109,7 @@ services:
       - -config.file=/etc/loki/loki.yaml
     volumes:
       - ./loki/config/loki.yaml:/etc/loki/loki.yaml:ro
-      - loki-data:/data/loki
+      - loki-data:/loki
     networks:
       - monitoring
       - proxy
