@@ -95,9 +95,9 @@ memberlist:
 # ── Limits (Tenant-Defaults) ──────────────────────────────────────────────────
 limits:
   compactor_blocks_retention_period: 90d
-  # 0 = unbegrenzt; bei Bedarf per-tenant überschreiben (runtime.yaml)
+  # 0 = unbegrenzt (nur für max_global_series_per_user); ingestion_rate NICHT auf 0 setzen
   max_global_series_per_user: 0
-  ingestion_rate: 0
+  # ingestion_rate fehlt → Mimir-Default: 10000 Samples/s pro Tenant
 
 # ── Runtime Config (Per-Tenant-Overrides, Hot-Reload alle 10s) ───────────────
 # Datei anlegen unter mimir/config/runtime.yaml für Tenant-spezifische Limits.
